@@ -1,10 +1,53 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Office Problem Polls system</title>
-  <link rel="stylesheet" href="styles.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Office Problem Polls System</title>
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: #f9f9f9;
+      color: #333;
+      margin: 0;
+      padding: 0;
+    }
+    .container {
+      max-width: 900px;
+      margin: 20px auto;
+      padding: 0 15px;
+    }
+    h1, h2 { text-align: center; }
+    .muted { color: #666; }
+    .card {
+      background: #fff;
+      padding: 20px;
+      margin-bottom: 20px;
+      border-radius: 10px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    }
+    .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .form-group { display: flex; flex-direction: column; }
+    label { margin-bottom: 5px; font-weight: bold; }
+    input, select, textarea { padding: 8px; border-radius: 5px; border: 1px solid #ccc; }
+    .radio-group label { margin-right: 10px; font-weight: normal; }
+    .actions { margin-top: 15px; text-align: center; }
+    .btn { padding: 8px 15px; border: none; border-radius: 5px; cursor: pointer; margin: 0 5px; }
+    .btn.primary { background: #4a90e2; color: #fff; }
+    .btn.danger { background: #e74c3c; color: #fff; }
+    .stats p { margin: 5px 0; }
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { padding: 8px; border: 1px solid #ccc; text-align: center; }
+    .filters { margin: 10px 0; text-align: center; }
+    .filters label { margin-right: 10px; }
+    #toggleDark { margin-top: 10px; }
+    /* Dark mode */
+    body.dark-mode { background: #121212; color: #f0f0f0; }
+    body.dark-mode .card { background: #1e1e1e; }
+    body.dark-mode input, body.dark-mode select, body.dark-mode textarea { background: #333; color: #f0f0f0; border: 1px solid #555; }
+    body.dark-mode table, body.dark-mode th, body.dark-mode td { border-color: #555; }
+  </style>
 </head>
 <body>
   <header class="container">
@@ -46,7 +89,7 @@
         </div>
 
         <div class="form-group">
-          <label for="details">Short Note </label>
+          <label for="details">Short Note</label>
           <textarea id="details" rows="3" placeholder="Add a brief note…"></textarea>
         </div>
       </div>
@@ -55,15 +98,27 @@
         <button type="submit" class="btn primary">Submit Vote</button>
         <button type="button" id="exportCsv" class="btn">Export CSV</button>
         <button type="button" id="clearAll" class="btn danger">Clear All</button>
+        <button type="button" id="toggleDark" class="btn">Toggle Dark Mode</button>
       </div>
     </form>
   </main>
 
   <section class="container">
     <div class="card">
+      <h2>Filters</h2>
+      <div class="filters">
+        <label><input type="checkbox" value="Low" checked> Low</label>
+        <label><input type="checkbox" value="Medium" checked> Medium</label>
+        <label><input type="checkbox" value="High" checked> High</label>
+        <label><input type="checkbox" value="Critical" checked> Critical</label>
+      </div>
+    </div>
+
+    <div class="card">
       <h2>Live Results</h2>
       <div id="stats" class="stats"></div>
       <div id="tableWrap" class="table-wrap"></div>
+      <canvas id="voteChart" width="400" height="200"></canvas>
     </div>
   </section>
 
@@ -71,6 +126,120 @@
     <p>All data is stored in your browser (localStorage). You can host this on AWS S3 as a static website.</p>
   </footer>
 
-  <script src="script.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    const form = document.getElementById('pollForm');
+    const exportBtn = document.getElementById('exportCsv');
+    const clearBtn = document.getElementById('clearAll');
+    const toggleDark = document.getElementById('toggleDark');
+    const statsDiv = document.getElementById('stats');
+    const tableWrap = document.getElementById('tableWrap');
+    const filters = document.querySelectorAll('.filters input[type="checkbox"]');
+    const chartCtx = document.getElementById('voteChart').getContext('2d');
+    let chart;
+
+    function getVotes() {
+      return JSON.parse(localStorage.getItem('votes') || '[]');
+    }
+
+    function saveVotes(votes) {
+      localStorage.setItem('votes', JSON.stringify(votes));
+    }
+
+    function updateDisplay() {
+      const votes = getVotes();
+      const activeFilters = Array.from(filters).filter(f => f.checked).map(f => f.value);
+      const filteredVotes = votes.filter(v => activeFilters.includes(v.severity));
+
+      // Stats
+      const problemCounts = {};
+      filteredVotes.forEach(v => problemCounts[v.problem] = (problemCounts[v.problem] || 0) + 1);
+      statsDiv.innerHTML = Object.keys(problemCounts).map(p => `<p>${p}: ${problemCounts[p]} votes</p>`).join('');
+
+      // Table
+      tableWrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Problem</th><th>Severity</th><th>Location</th><th>Note</th><th>Time</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${filteredVotes.map(v => `
+              <tr>
+                <td>${v.problem}</td>
+                <td>${v.severity}</td>
+                <td>${v.location}</td>
+                <td>${v.details}</td>
+                <td>${v.timestamp}</td>
+              </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      `;
+
+      // Chart
+      if (chart) chart.destroy();
+      chart = new Chart(chartCtx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(problemCounts),
+          datasets: [{
+            label: 'Votes',
+            data: Object.values(problemCounts),
+            backgroundColor: 'rgba(75, 192, 192, 0.5)'
+          }]
+        },
+        options: { responsive: true }
+      });
+    }
+
+    form.addEventListener('submit', e => {
+      e.preventDefault();
+      const problem = document.getElementById('problem').value;
+      const severity = document.querySelector('input[name="sev"]:checked').value;
+      const location = document.getElementById('location').value;
+      const details = document.getElementById('details').value;
+      const votes = getVotes();
+
+      votes.push({ problem, severity, location, details, timestamp: new Date().toLocaleString() });
+      saveVotes(votes);
+      updateDisplay();
+      form.reset();
+    });
+
+    exportBtn.addEventListener('click', () => {
+      const votes = getVotes();
+      if (!votes.length) return alert('No votes to export!');
+      const csv = [
+        ['Problem','Severity','Location','Note','Timestamp'],
+        ...votes.map(v => [v.problem,v.severity,v.location,v.details,v.timestamp])
+      ].map(row => row.map(a => `"${a}"`).join(',')).join('\n');
+
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'votes.csv';
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    clearBtn.addEventListener('click', () => {
+      if (confirm('Are you sure you want to clear all votes?')) {
+        localStorage.removeItem('votes');
+        updateDisplay();
+      }
+    });
+
+    toggleDark.addEventListener('click', () => {
+      document.body.classList.toggle('dark-mode');
+    });
+
+    filters.forEach(f => f.addEventListener('change', updateDisplay));
+
+    // Initial display
+    updateDisplay();
+  </script>
 </body>
 </html>
