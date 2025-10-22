@@ -1,22 +1,26 @@
 pipeline {
     agent any
+
     environment {
-        VERCEL_TOKEN = credentials('vercel_token')
+        VERCEL_TOKEN = credentials('vercel-token')
     }
+
     stages {
-        stage('Install') {
+        stage('Checkout') {
+            steps {
+                git 'https://github.com/aliimtiazdevops/Automated-POLLING-'
+            }
+        }
+
+        stage('Install Dependencies') {
             steps {
                 bat 'npm install'
             }
         }
-        stage('Build') {
+
+        stage('Deploy to Vercel') {
             steps {
-                bat 'npm run build'
-            }
-        }
-        stage('Deploy') {
-            steps {
-                bat 'npx vercel --prod --yes --token=%VERCEL_TOKEN%'
+                bat "npx vercel --prod --token %VERCEL_TOKEN%"
             }
         }
     }
