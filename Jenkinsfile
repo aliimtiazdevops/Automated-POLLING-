@@ -8,7 +8,7 @@ pipeline {
     stages {
         stage('Checkout') {
             steps {
-                git 'https://github.com/aliimtiazdevops/Automated-POLLING-'
+                git branch: 'main', url: 'https://github.com/aliimtiazdevops/Automated-POLLING-.git'
             }
         }
 
